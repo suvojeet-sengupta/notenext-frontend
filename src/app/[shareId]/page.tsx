@@ -4,8 +4,7 @@ import React, { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   FileText, Copy, Download, Trash2, 
-  ExternalLink, EyeOff, Loader2, Check,
-  CornerDownRight, ListOrdered, WrapText
+  EyeOff, Loader2, ListOrdered, WrapText
 } from 'lucide-react';
 import { importKey, decryptData } from '@/lib/crypto';
 import { highlightToLines, mapLanguage } from '@/lib/syntax';
@@ -15,6 +14,8 @@ interface PageProps {
 }
 
 export const runtime = 'edge';
+
+const API_BASE_URL = 'https://api-notenext.suvojeetsengupta.in';
 
 export default function ViewPastePage(props: PageProps) {
   const router = useRouter();
@@ -70,7 +71,14 @@ export default function ViewPastePage(props: PageProps) {
         const hash = window.location.hash;
         const hexKey = hash && hash.length > 1 ? hash.substring(1) : null;
 
-        // 2. Fetch note from local API proxy route (which manages security and cookies)
+        // 2. Check if the user is the creator by checking local reference and token
+        const deleteToken = localStorage.getItem(`nn_delete_token_${shareId}`);
+        const createdNotes = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
+        if (deleteToken || createdNotes.includes(shareId)) {
+          setIsCreator(true);
+        }
+
+        // 3. Fetch note from local API proxy route
         const res = await fetch(`/api/notes/${shareId}`);
         if (res.status === 404) {
           throw new Error('This note does not exist or has expired.');
@@ -89,9 +97,11 @@ export default function ViewPastePage(props: PageProps) {
         });
 
         // Safe creator checking returned directly by our secure proxy handler
-        setIsCreator(!!note.isCreator);
+        if (note.isCreator) {
+          setIsCreator(true);
+        }
 
-        // 3. Retrieve content (either decrypting or base64 decoding)
+        // 4. Retrieve content (either decrypting or base64 decoding)
         let contentStr = '';
         let noteTitle = 'Raw Paste';
         let noteLang = 'auto';
@@ -129,6 +139,22 @@ export default function ViewPastePage(props: PageProps) {
           } catch {
             // normal plain string, use as content
           }
+        }
+
+        // 5. URL Shortener Redirection: Immediately redirect if content is a valid URL
+        const trimmedContent = contentStr.trim();
+        const isUrl = (() => {
+          try {
+            const url = new URL(trimmedContent);
+            return url.protocol === 'http:' || url.protocol === 'https:';
+          } catch {
+            return false;
+          }
+        })();
+
+        if (isUrl) {
+          window.location.replace(trimmedContent);
+          return;
         }
 
         setDecryptedData({
@@ -231,16 +257,6 @@ export default function ViewPastePage(props: PageProps) {
       setIsDeleting(false);
     }
   };
-
-  // Check if content is a URL
-  const isUrlContent = decryptedData ? (() => {
-    try {
-      const url = new URL(decryptedData.content.trim());
-      return url.protocol === 'http:' || url.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  })() : false;
 
   // Process and highlight code
   const codeLines = decryptedData ? highlightToLines(
@@ -398,63 +414,39 @@ export default function ViewPastePage(props: PageProps) {
 
       {/* Main Content Area */}
       <main className="flex-1 w-full h-full relative overflow-auto bg-[#212121] py-4 selection:bg-[#ff9800]/30 select-text">
-        {isUrlContent ? (
-          // URL Redirection Mode Card
-          <div className="w-full h-full flex items-center justify-center select-none px-6">
-            <div className="max-w-md w-full p-6 bg-[#1a1a1a] border border-zinc-800 rounded">
-              <div className="flex items-center gap-3 text-[#ff9800] mb-4">
-                <CornerDownRight className="h-6 w-6" />
-                <h3 className="font-bold text-sm">ENCRYPTED REDIRECT URL</h3>
-              </div>
-              <p className="text-zinc-400 text-xs mb-6 font-bold break-all leading-5">
-                {decryptedData?.content}
-              </p>
-              <a
-                href={decryptedData?.content}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full py-2.5 bg-[#ff9800] text-black font-bold text-xs rounded hover:bg-amber-600 transition-colors"
-              >
-                OPEN EXTERNAL LINK
-                <ExternalLink className="h-4 w-4" />
-              </a>
-            </div>
-          </div>
-        ) : (
-          // Standard Syntax Highlighted Code Viewer
-          <div 
-            className="px-6 font-mono font-bold leading-6 overflow-x-auto"
-            style={{ fontSize: `${fontSize}px` }}
-          >
-            {codeLines.map((line, lineIdx) => (
-              <div key={lineIdx} className="flex select-text min-w-max hover:bg-zinc-800/10">
-                {/* Line number column */}
-                {showLineNumbers && (
-                  <span className="text-zinc-600 select-none text-right pr-6 w-12 flex-shrink-0 border-r border-zinc-800 mr-4">
-                    {lineIdx + 1}
-                  </span>
-                )}
-                
-                {/* Code line content */}
-                <span className={`flex-1 ${wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}>
-                  {line.length === 0 ? (
-                    // empty line spacer
-                    <br />
-                  ) : (
-                    line.map((token, tokenIdx) => (
-                      <span 
-                        key={tokenIdx} 
-                        className={token.type ? `token ${token.type}` : ''}
-                      >
-                        {token.content}
-                      </span>
-                    ))
-                  )}
+        {/* Standard Syntax Highlighted Code Viewer */}
+        <div 
+          className="px-6 font-mono font-bold leading-6 overflow-x-auto"
+          style={{ fontSize: `${fontSize}px` }}
+        >
+          {codeLines.map((line, lineIdx) => (
+            <div key={lineIdx} className="flex select-text min-w-max hover:bg-zinc-800/10">
+              {/* Line number column */}
+              {showLineNumbers && (
+                <span className="text-zinc-600 select-none text-right pr-6 w-12 flex-shrink-0 border-r border-zinc-800 mr-4">
+                  {lineIdx + 1}
                 </span>
-              </div>
-            ))}
-          </div>
-        )}
+              )}
+              
+              {/* Code line content */}
+              <span className={`flex-1 ${wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}>
+                {line.length === 0 ? (
+                  // empty line spacer
+                  <br />
+                ) : (
+                  line.map((token, tokenIdx) => (
+                    <span 
+                      key={tokenIdx} 
+                      className={token.type ? `token ${token.type}` : ''}
+                    >
+                      {token.content}
+                    </span>
+                  ))
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
       </main>
 
       {/* Footer */}

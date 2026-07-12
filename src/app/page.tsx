@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, Save, Check, Loader2, RefreshCw } from 'lucide-react';
+import { Settings, Save, Check, Loader2, Copy, ExternalLink, RefreshCw } from 'lucide-react';
 import { generateKey, exportKey, encryptData } from '@/lib/crypto';
 
-// Language options matching NoteNext clone requirements
+// Language options matching Katbin clone requirements
 const LANGUAGES = [
   { value: 'auto', label: 'Auto Detect' },
   { value: 'text', label: 'Plain Text' },
@@ -34,6 +34,8 @@ const EXPIRATIONS = [
   { value: 'never', label: 'Never' },
 ];
 
+export const runtime = 'edge';
+
 export default function CreatePastePage() {
   const router = useRouter();
   
@@ -51,6 +53,8 @@ export default function CreatePastePage() {
   const [showSettings, setShowSettings] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'info' | 'error' } | null>(null);
+  const [shortenedUrl, setShortenedUrl] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -173,13 +177,40 @@ export default function CreatePastePage() {
 
       showToast('Note shared successfully!');
       
-      // 6. Redirect to view page
+      // 6. Redirect to view page or display shortened URL
       const redirectUrl = encryptNote ? `/${note.shareId}#${keyHex}` : `/${note.shareId}`;
-      router.push(redirectUrl);
+      const absoluteUrl = `${window.location.origin}${redirectUrl}`;
+
+      if (isUrl(content)) {
+        // URL Shortener Mode: Show URL modal on home page
+        setShortenedUrl(absoluteUrl);
+        setIsSaving(false);
+      } else {
+        // Normal Paste Mode: Redirect to view page
+        router.push(redirectUrl);
+      }
     } catch (error: any) {
       console.error('Transmission or encryption error:', error);
       showToast(error.message || 'Failed to share note.', 'error');
       setIsSaving(false);
+    }
+  };
+
+  const handleCopyShortened = () => {
+    if (shortenedUrl) {
+      navigator.clipboard.writeText(shortenedUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+      showToast('Shortened link copied!');
+    }
+  };
+
+  const handleCreateAnother = () => {
+    setShortenedUrl(null);
+    setContent('');
+    setTitle('');
+    if (textareaRef.current) {
+      textareaRef.current.focus();
     }
   };
 
@@ -358,6 +389,57 @@ export default function CreatePastePage() {
           placeholder="Type or paste your content here..."
           className="w-full h-[calc(100%-40px)] px-6 py-6 outline-none bg-[#212121] text-white font-bold resize-none border-0 text-sm overflow-y-auto selection:bg-[#ff9800]/30"
         />
+
+        {/* Shortened URL Overlay Modal */}
+        {shortenedUrl && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[#212121]/95 z-40 p-6 select-text">
+            <div className="max-w-md w-full p-8 bg-[#1a1a1a] border border-zinc-800 rounded text-center">
+              <div className="w-12 h-12 bg-green-500/10 border border-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Check className="h-6 w-6 text-green-500 animate-pulse" />
+              </div>
+              <h2 className="text-[#ff9800] font-bold text-base mb-2">URL SHORTENED SUCCESSFULLY</h2>
+              <p className="text-zinc-500 text-xs font-bold mb-6">
+                Your direct redirection link is ready:
+              </p>
+
+              {/* Link Input Box */}
+              <div className="flex bg-[#212121] border border-zinc-800 rounded mb-6 overflow-hidden">
+                <input
+                  type="text"
+                  readOnly
+                  value={shortenedUrl}
+                  className="flex-1 px-4 py-2 bg-transparent text-white font-mono text-xs select-all outline-none border-0 font-bold"
+                />
+                <button
+                  onClick={handleCopyShortened}
+                  className="px-4 bg-zinc-800 text-[#ff9800] hover:text-white border-l border-zinc-800 cursor-pointer flex items-center justify-center"
+                  title="Copy link"
+                >
+                  {copiedLink ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </button>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-3">
+                <a
+                  href={shortenedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 py-2.5 bg-[#ff9800] text-black font-bold text-xs rounded hover:bg-amber-600 transition-colors"
+                >
+                  TEST REDIRECT LINK
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+                <button
+                  onClick={handleCreateAnother}
+                  className="text-xs text-zinc-500 hover:text-white underline transition-colors cursor-pointer"
+                >
+                  Create another paste/link
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Footer */}
