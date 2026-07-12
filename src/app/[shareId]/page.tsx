@@ -4,7 +4,7 @@ import React, { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   FileText, Copy, Download, Trash2, 
-  EyeOff, Loader2, ListOrdered, WrapText
+  EyeOff, Loader2, ListOrdered, WrapText, Lock, Key
 } from 'lucide-react';
 import { importKey, decryptData } from '@/lib/crypto';
 import { highlightToLines, mapLanguage } from '@/lib/syntax';
@@ -15,8 +15,6 @@ interface PageProps {
 
 export const runtime = 'edge';
 
-const API_BASE_URL = 'https://api-notenext.suvojeetsengupta.in';
-
 export default function ViewPastePage(props: PageProps) {
   const router = useRouter();
   const { shareId } = use(props.params);
@@ -24,6 +22,10 @@ export default function ViewPastePage(props: PageProps) {
   // States
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [promptForKey, setPromptForKey] = useState(false);
+  const [enteredKey, setEnteredKey] = useState('');
+  const [decryptError, setDecryptError] = useState<string | null>(null);
+
   const [metadata, setMetadata] = useState<{
     expiresAt: string | null;
     burnAfterRead: boolean;
@@ -37,6 +39,9 @@ export default function ViewPastePage(props: PageProps) {
     title: string;
     language: string;
   } | null>(null);
+
+  // Raw note payload cache to decrypt later if key is prompted
+  const [rawNote, setRawNote] = useState<any>(null);
 
   // Custom Display States
   const [showLineNumbers, setShowLineNumbers] = useState(true);
@@ -60,7 +65,7 @@ export default function ViewPastePage(props: PageProps) {
     }
   };
 
-  // Load and decrypt/decode note on mount
+  // Load note on mount
   useEffect(() => {
     const fetchAndDecrypt = async () => {
       try {
@@ -71,7 +76,7 @@ export default function ViewPastePage(props: PageProps) {
         const hash = window.location.hash;
         const hexKey = hash && hash.length > 1 ? hash.substring(1) : null;
 
-        // 2. Check if the user is the creator by checking local reference and token
+        // 2. Check if the user is the creator by checking local reference
         const deleteToken = localStorage.getItem(`nn_delete_token_${shareId}`);
         const createdNotes = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
         if (deleteToken || createdNotes.includes(shareId)) {
@@ -88,6 +93,8 @@ export default function ViewPastePage(props: PageProps) {
         }
 
         const note = await res.json();
+        setRawNote(note);
+
         setMetadata({
           expiresAt: note.expiresAt,
           burnAfterRead: note.burnAfterRead,
@@ -101,77 +108,134 @@ export default function ViewPastePage(props: PageProps) {
           setIsCreator(true);
         }
 
-        // 4. Retrieve content (either decrypting or base64 decoding)
-        let contentStr = '';
-        let noteTitle = 'Raw Paste';
-        let noteLang = 'auto';
-
+        // 4. Retrieve content
         if (hexKey) {
-          // Encrypted Mode
-          try {
-            const cryptoKey = await importKey(hexKey);
-            contentStr = await decryptData(note.ciphertext, note.iv, cryptoKey);
-          } catch (e) {
-            throw new Error('Failed to decrypt note. The key in the URL hash is invalid or corrupted.');
-          }
-
-          // Parse JSON wrapper for encrypted metadata
-          try {
-            const parsed = JSON.parse(contentStr);
-            contentStr = parsed.content;
-            noteTitle = parsed.title || 'Untitled Note';
-            noteLang = parsed.language || 'auto';
-          } catch {
-            // Fallback if data was encrypted as a plain string instead of JSON
-          }
+          // Encrypted Mode with Key in URL
+          await decryptWithKey(note, hexKey);
         } else {
-          // RawData / Base64 Mode (no key in hash)
-          contentStr = base64ToUtf8(note.ciphertext);
-          
-          // Check if decoded content was wrapped in JSON anyway
+          // No Key in URL - Check if the ciphertext is encrypted binary or raw base64 text
+          let contentStr = '';
+          let isEncrypted = false;
+
           try {
-            const parsed = JSON.parse(contentStr);
-            if (parsed && typeof parsed === 'object' && 'content' in parsed) {
-              contentStr = parsed.content;
-              noteTitle = parsed.title || 'Untitled Note';
-              noteLang = parsed.language || 'auto';
+            contentStr = base64ToUtf8(note.ciphertext);
+            // If the decoded content contains control chars (binary data), it is encrypted
+            const isBinary = /[\x00-\x08\x0E-\x1F]/.test(contentStr);
+            if (isBinary) {
+              isEncrypted = true;
             }
           } catch {
-            // normal plain string, use as content
+            isEncrypted = true; // Threw error during atob/decode, must be raw encrypted binary
+          }
+
+          if (isEncrypted) {
+            // Display decryption key request screen
+            setPromptForKey(true);
+            setLoading(false);
+          } else {
+            // RawData / Base64 Mode (Plaintext fallback)
+            let noteTitle = 'Raw Paste';
+            let noteLang = 'auto';
+
+            try {
+              const parsed = JSON.parse(contentStr);
+              if (parsed && typeof parsed === 'object' && 'content' in parsed) {
+                contentStr = parsed.content;
+                noteTitle = parsed.title || 'Untitled Note';
+                noteLang = parsed.language || 'auto';
+              }
+            } catch {
+              // Plain string
+            }
+
+            // Redirect if URL
+            const trimmedContent = contentStr.trim();
+            if (isUrl(trimmedContent)) {
+              window.location.replace(trimmedContent);
+              return;
+            }
+
+            setDecryptedData({
+              content: contentStr,
+              title: noteTitle,
+              language: noteLang,
+            });
+            setLoading(false);
           }
         }
-
-        // 5. URL Shortener Redirection: Immediately redirect if content is a valid URL
-        const trimmedContent = contentStr.trim();
-        const isUrl = (() => {
-          try {
-            const url = new URL(trimmedContent);
-            return url.protocol === 'http:' || url.protocol === 'https:';
-          } catch {
-            return false;
-          }
-        })();
-
-        if (isUrl) {
-          window.location.replace(trimmedContent);
-          return;
-        }
-
-        setDecryptedData({
-          content: contentStr,
-          title: noteTitle,
-          language: noteLang,
-        });
       } catch (err: any) {
         console.error(err);
         setError(err.message || 'An error occurred while loading this note.');
-      } finally {
         setLoading(false);
       }
     };
 
     fetchAndDecrypt();
   }, [shareId]);
+
+  // Decryption function
+  const decryptWithKey = async (note: any, keyStr: string) => {
+    try {
+      const cryptoKey = await importKey(keyStr);
+      let contentStr = await decryptData(note.ciphertext, note.iv, cryptoKey);
+      
+      let noteTitle = 'Untitled Note';
+      let noteLang = 'auto';
+
+      try {
+        const parsed = JSON.parse(contentStr);
+        contentStr = parsed.content;
+        noteTitle = parsed.title || 'Untitled Note';
+        noteLang = parsed.language || 'auto';
+      } catch {
+        // Plain string fallback
+      }
+
+      // Check if URL Redirection
+      const trimmedContent = contentStr.trim();
+      if (isUrl(trimmedContent)) {
+        window.location.replace(trimmedContent);
+        return;
+      }
+
+      setDecryptedData({
+        content: contentStr,
+        title: noteTitle,
+        language: noteLang,
+      });
+      setPromptForKey(false);
+      setError(null);
+    } catch (e) {
+      throw new Error('Failed to decrypt note. The key is invalid or incorrect.');
+    }
+  };
+
+  const handleManualDecrypt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!enteredKey.trim()) {
+      setDecryptError('Please enter a decryption key.');
+      return;
+    }
+
+    setDecryptError(null);
+    try {
+      // Clean clean hash prefixes if pasted with #
+      const cleanKey = enteredKey.trim().replace(/^#/, '');
+      await decryptWithKey(rawNote, cleanKey);
+      showToast('Note decrypted successfully!');
+    } catch (err: any) {
+      setDecryptError(err.message || 'Decryption failed. Check your key.');
+    }
+  };
+
+  const isUrl = (text: string) => {
+    try {
+      const url = new URL(text);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
 
   const showToast = (message: string, type: 'info' | 'error' = 'info') => {
     setToast({ message, type });
@@ -232,7 +296,6 @@ export default function ViewPastePage(props: PageProps) {
     
     setIsDeleting(true);
     try {
-      // Proxy handles deleteToken securely via HttpOnly cookie
       const res = await fetch(`/api/notes/${shareId}`, {
         method: 'DELETE',
       });
@@ -241,7 +304,6 @@ export default function ViewPastePage(props: PageProps) {
         throw new Error('Failed to delete note. You might not be authorized.');
       }
       
-      // Clean local list
       if (typeof window !== 'undefined') {
         const createdNotes = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
         const filtered = createdNotes.filter((id: string) => id !== shareId);
@@ -258,7 +320,6 @@ export default function ViewPastePage(props: PageProps) {
     }
   };
 
-  // Process and highlight code
   const codeLines = decryptedData ? highlightToLines(
     decryptedData.content, 
     mapLanguage(decryptedData.language)
@@ -269,6 +330,56 @@ export default function ViewPastePage(props: PageProps) {
       <div className="flex flex-col flex-1 h-full w-full bg-[#212121] items-center justify-center text-white">
         <Loader2 className="h-8 w-8 animate-spin text-[#ff9800] mb-4" />
         <p className="font-bold text-sm">DECRYPTING NOTE SECURELY CLIENT-SIDE...</p>
+      </div>
+    );
+  }
+
+  // Decryption Key Prompt Screen
+  if (promptForKey) {
+    return (
+      <div className="flex flex-col flex-1 h-full w-full bg-[#212121] items-center justify-center text-white p-6 select-text">
+        <div className="max-w-md w-full p-8 bg-[#1a1a1a] border border-zinc-800 rounded">
+          <div className="w-12 h-12 bg-[#ff9800]/10 border border-[#ff9800] rounded-full flex items-center justify-center mx-auto mb-4">
+            <Lock className="h-5 w-5 text-[#ff9800]" />
+          </div>
+          <h2 className="text-[#ff9800] font-bold text-base text-center mb-2">SECURE NOTE ENCRYPTED</h2>
+          <p className="text-zinc-400 text-xs font-bold text-center leading-5 mb-6">
+            This note is client-side encrypted, but the decryption key is missing from the link. Please enter the key below to access the contents.
+          </p>
+
+          <form onSubmit={handleManualDecrypt} className="space-y-4">
+            <div className="flex bg-[#212121] border border-zinc-800 rounded overflow-hidden p-1 items-center">
+              <Key className="h-4 w-4 text-zinc-500 ml-3 mr-2 flex-shrink-0" />
+              <input
+                type="password"
+                placeholder="Enter Decryption Key"
+                value={enteredKey}
+                onChange={(e) => setEnteredKey(e.target.value)}
+                className="flex-1 px-2 py-2 bg-transparent text-white font-mono text-xs outline-none border-0 font-bold"
+              />
+            </div>
+
+            {decryptError && (
+              <p className="text-red-500 text-xs font-bold text-center">{decryptError}</p>
+            )}
+
+            <button
+              type="submit"
+              className="w-full py-2.5 bg-[#ff9800] text-black font-bold text-xs rounded hover:bg-amber-600 transition-colors cursor-pointer"
+            >
+              DECRYPT NOTE
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <a
+              href="/"
+              className="text-xs text-zinc-500 hover:text-white underline transition-colors"
+            >
+              Back to Home
+            </a>
+          </div>
+        </div>
       </div>
     );
   }
