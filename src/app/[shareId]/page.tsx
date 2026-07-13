@@ -106,6 +106,7 @@ export default function ViewPastePage(props: PageProps) {
         if (hexKey) {
           // Encrypted Mode with Key in URL
           await decryptWithKey(note, hexKey);
+          setLoading(false);
         } else {
           // No Key in URL - Check if the ciphertext is encrypted binary or raw base64 text
           let contentStr = '';
