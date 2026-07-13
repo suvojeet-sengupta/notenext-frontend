@@ -26,13 +26,16 @@ const LANGUAGES = [
   { value: 'bash', label: 'Bash' },
 ];
 
+// Backend accepts a duration string clamped to [1 minute, 30 days] and defaults
+// to 1 day (see /docs). Values below use the API's duration format; anything
+// longer than 30 days is not supported, so there is no "Never" option.
 const EXPIRATIONS = [
   { value: '10m', label: '10 Minutes' },
   { value: '1h', label: '1 Hour' },
+  { value: '6h', label: '6 Hours' },
   { value: '1d', label: '1 Day' },
-  { value: '1w', label: '1 Week' },
-  { value: '1m', label: '1 Month' },
-  { value: 'never', label: 'Never' },
+  { value: '7d', label: '7 Days' },
+  { value: '30d', label: '30 Days (Max)' },
 ];
 
 export const runtime = 'edge';
@@ -156,7 +159,7 @@ export default function CreatePastePage() {
           ciphertext,
           iv,
           sharedBy: sharedBy.trim() || 'Anonymous',
-          expiresIn: expiration === 'never' ? undefined : expiration,
+          expiresIn: expiration,
           burnAfterRead,
           maxReads: maxReads.trim() ? parseInt(maxReads, 10) : null,
           rawData: !encryptNote,
