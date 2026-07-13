@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "build:standalone": "BUILD_STANDALONE=1 next build",
+    "docker:build": "docker build -t notenext-frontend .",
+    "docker:run": "docker run --rm -p 3000:3000 notenext-frontend",
     "pages:build": "npx @cloudflare/next-on-pages",
     "pages:preview": "wrangler pages dev .vercel/output/static",
     "pages:deploy": "wrangler pages deploy .vercel/output/static"

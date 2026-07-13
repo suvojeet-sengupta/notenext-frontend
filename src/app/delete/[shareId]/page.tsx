@@ -3,6 +3,7 @@
 import React, { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Trash2, CheckCircle, AlertTriangle } from 'lucide-react';
+import { deleteNote, clearDeleteToken } from '@/lib/api';
 
 interface DeletePageProps {
   params: Promise<{ shareId: string }>;
@@ -24,21 +25,15 @@ export default function DeletePastePage(props: DeletePageProps) {
         setDeleting(true);
         setError(null);
 
-        // Perform delete via secure local API proxy
-        const res = await fetch(`/api/notes/${shareId}`, {
-          method: 'DELETE',
-        });
+        // Perform delete directly against the backend using the stored token
+        const res = await deleteNote(shareId);
 
         if (!res.ok) {
           throw new Error('Failed to delete note. You might not be the creator of this note or it may have already been deleted.');
         }
 
         // Clean up from local storage
-        if (typeof window !== 'undefined') {
-          const createdNotes = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
-          const filtered = createdNotes.filter((id: string) => id !== shareId);
-          localStorage.setItem('nn_created_notes', JSON.stringify(filtered));
-        }
+        clearDeleteToken(shareId);
 
         setSuccess(true);
         // Redirect back home after 3 seconds

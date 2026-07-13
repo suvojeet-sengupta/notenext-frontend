@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NoteNext — Frontend
 
-## Getting Started
+Encrypted paste / URL-shortener frontend (Next.js 16). The browser talks to the
+backend API **directly** — there is no server-side proxy. The app can be
+deployed either to **Cloudflare Pages** or to any **VPS via Docker**.
 
-First, run the development server:
+## Configuration
+
+Set the backend URL with `NEXT_PUBLIC_API_BASE_URL`. It is inlined into the
+client bundle at **build time** (not runtime), so it must be present when you
+build. Copy `.env.example` to `.env.local` for local dev:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+> ⚠️ Because the browser calls the backend cross-origin, the backend must send
+> CORS headers (`Access-Control-Allow-Origin` for this app's origin, plus the
+> `DELETE` method and the `X-Delete-Token` / `Delete-Token` headers).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Local development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+# http://localhost:3000
+```
 
-## Learn More
+## Deploy: Docker / VPS
 
-To learn more about Next.js, take a look at the following resources:
+Docker does **not** run on Cloudflare Pages — use it on a VPS. The image builds
+a standalone Node server (`output: 'standalone'`).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+# Build (pass your backend URL so it gets inlined)
+docker build -t notenext-frontend \
+  --build-arg NEXT_PUBLIC_API_BASE_URL=https://api-notenext.suvojeetsengupta.in .
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Run
+docker run --rm -p 3000:3000 notenext-frontend
+```
 
-## Deploy on Vercel
+Or with Compose:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+NEXT_PUBLIC_API_BASE_URL=https://api-notenext.suvojeetsengupta.in docker compose up --build
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Put nginx/Caddy in front for TLS. To build the standalone server without Docker:
+
+```bash
+npm run build:standalone
+node .next/standalone/server.js
+```
+
+## Deploy: Cloudflare Pages
+
+```bash
+npm run pages:build     # @cloudflare/next-on-pages
+npm run pages:preview    # local preview
+npm run pages:deploy     # deploy
+```
+
+In the Cloudflare Pages dashboard, set `NEXT_PUBLIC_API_BASE_URL` as a build
+environment variable and use `npm run pages:build` as the build command with
+`.vercel/output/static` as the output directory.

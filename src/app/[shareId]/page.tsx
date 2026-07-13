@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { importKey, decryptData } from '@/lib/crypto';
 import { highlightToLines, mapLanguage } from '@/lib/syntax';
+import { fetchNote, deleteNote, isCreator as checkIsCreator, clearDeleteToken } from '@/lib/api';
 
 interface PageProps {
   params: Promise<{ shareId: string }>;
@@ -77,14 +78,12 @@ export default function ViewPastePage(props: PageProps) {
         const hexKey = hash && hash.length > 1 ? hash.substring(1) : null;
 
         // 2. Check if the user is the creator by checking local reference
-        const deleteToken = localStorage.getItem(`nn_delete_token_${shareId}`);
-        const createdNotes = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
-        if (deleteToken || createdNotes.includes(shareId)) {
+        if (checkIsCreator(shareId)) {
           setIsCreator(true);
         }
 
-        // 3. Fetch note from local API proxy route
-        const res = await fetch(`/api/notes/${shareId}`);
+        // 3. Fetch note directly from the backend
+        const res = await fetchNote(shareId);
         if (res.status === 404) {
           throw new Error('This note does not exist or has expired.');
         }
@@ -102,11 +101,6 @@ export default function ViewPastePage(props: PageProps) {
           createdAt: note.createdAt || new Date().toISOString(),
           maxReads: note.maxReads,
         });
-
-        // Safe creator checking returned directly by our secure proxy handler
-        if (note.isCreator) {
-          setIsCreator(true);
-        }
 
         // 4. Retrieve content
         if (hexKey) {
@@ -296,19 +290,13 @@ export default function ViewPastePage(props: PageProps) {
     
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/notes/${shareId}`, {
-        method: 'DELETE',
-      });
-      
+      const res = await deleteNote(shareId);
+
       if (!res.ok) {
         throw new Error('Failed to delete note. You might not be authorized.');
       }
-      
-      if (typeof window !== 'undefined') {
-        const createdNotes = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
-        const filtered = createdNotes.filter((id: string) => id !== shareId);
-        localStorage.setItem('nn_created_notes', JSON.stringify(filtered));
-      }
+
+      clearDeleteToken(shareId);
 
       showToast('Note deleted successfully!');
       setTimeout(() => {

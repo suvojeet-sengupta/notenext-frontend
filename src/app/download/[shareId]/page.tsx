@@ -3,6 +3,7 @@
 import React, { useState, useEffect, use } from 'react';
 import { importKey, decryptData } from '@/lib/crypto';
 import { mapLanguage } from '@/lib/syntax';
+import { fetchNote } from '@/lib/api';
 import { Loader2, Download, CheckCircle } from 'lucide-react';
 
 interface DownloadPageProps {
@@ -42,8 +43,8 @@ export default function DownloadPastePage(props: DownloadPageProps) {
         const hash = window.location.hash;
         const hexKey = hash && hash.length > 1 ? hash.substring(1) : null;
 
-        // 2. Fetch note from local proxy
-        const res = await fetch(`/api/notes/${shareId}`);
+        // 2. Fetch note directly from the backend
+        const res = await fetchNote(shareId);
         if (res.status === 404) {
           throw new Error('This note does not exist or has expired.');
         }

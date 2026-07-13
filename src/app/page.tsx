@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Settings, Save, Check, Loader2, Copy, ExternalLink, RefreshCw } from 'lucide-react';
 import { generateKey, exportKey, encryptData } from '@/lib/crypto';
+import { API_BASE_URL, saveDeleteToken } from '@/lib/api';
 
 // Language options matching Katbin clone requirements
 const LANGUAGES = [
@@ -145,8 +146,8 @@ export default function CreatePastePage() {
         ciphertext = utf8ToBase64(content);
       }
 
-      // 5. Send package to the local proxy API route
-      const response = await fetch('/api/notes/share', {
+      // 5. Send package directly to the backend API
+      const response = await fetch(`${API_BASE_URL}/api/notes/share`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -167,13 +168,9 @@ export default function CreatePastePage() {
       }
 
       const note = await response.json();
-      
-      // Save creator status in localStorage (local reference only, security token is in HttpOnly cookie)
-      if (typeof window !== 'undefined') {
-        const createdNotes = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
-        createdNotes.push(note.shareId);
-        localStorage.setItem('nn_created_notes', JSON.stringify(createdNotes));
-      }
+
+      // Store the delete token locally so the creator can delete the note later.
+      saveDeleteToken(note.shareId, note.deleteToken);
 
       showToast('Note shared successfully!');
       
