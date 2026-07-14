@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, Save, Check, Loader2, Copy, ExternalLink, RefreshCw } from 'lucide-react';
+import { Settings, Save, Check, Loader2, Copy, ExternalLink, RefreshCw, Lock } from 'lucide-react';
 import { generateKey, exportKey, encryptData } from '@/lib/crypto';
 import { API_BASE_URL, saveDeleteToken } from '@/lib/api';
 
@@ -377,7 +377,7 @@ export default function CreatePastePage() {
           ) : !encryptNote ? (
             <span className="text-zinc-400">Raw Base64 mode active. Content is shared without client-side encryption.</span>
           ) : (
-            <span className="text-zinc-400">Paste, save, share! (Pasting just a URL will shorten it!)</span>
+            <span className="text-zinc-400 flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> End to end encrypted sharing</span>
           )}
         </p>
 
