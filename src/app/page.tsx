@@ -47,7 +47,7 @@ export default function CreatePastePage() {
   const [content, setContent] = useState('');
   const [title, setTitle] = useState('');
   const [sharedBy, setSharedBy] = useState('');
-  const [language, setLanguage] = useState('auto');
+  const [language, setLanguage] = useState('text');
   const [expiration, setExpiration] = useState('1d');
   const [burnAfterRead, setBurnAfterRead] = useState(false);
   const [maxReads, setMaxReads] = useState('');
@@ -175,11 +175,13 @@ export default function CreatePastePage() {
       // Store the delete token locally so the creator can delete the note later.
       saveDeleteToken(note.shareId, note.deleteToken);
 
-      showToast('Note shared successfully!');
+      showToast('Note shared and link copied!');
       
       // 6. Redirect to view page or display shortened URL
       const redirectUrl = encryptNote ? `/${note.shareId}#${keyHex}` : `/${note.shareId}`;
       const absoluteUrl = `${window.location.origin}${redirectUrl}`;
+
+      navigator.clipboard.writeText(absoluteUrl).catch(console.error);
 
       if (isUrl(content)) {
         // URL Shortener Mode: Show URL modal on home page
