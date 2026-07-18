@@ -103,7 +103,25 @@ export default function ViewPastePage(props: PageProps) {
         });
 
         // 4. Retrieve content
-        if (hexKey) {
+        // Check if the API returned plain content directly (no ciphertext)
+        if (note.content && !note.ciphertext) {
+          // Direct content mode — no decryption or base64 decoding needed
+          const contentStr = note.content;
+
+          // Redirect if URL
+          const trimmedContent = contentStr.trim();
+          if (isUrl(trimmedContent)) {
+            window.location.replace(trimmedContent);
+            return;
+          }
+
+          setDecryptedData({
+            content: contentStr,
+            title: 'Shared Paste',
+            language: 'auto',
+          });
+          setLoading(false);
+        } else if (hexKey) {
           // Encrypted Mode with Key in URL
           await decryptWithKey(note, hexKey);
           setLoading(false);

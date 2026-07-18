@@ -59,7 +59,12 @@ export default function DownloadPastePage(props: DownloadPageProps) {
         let title = 'note';
         let language = 'text';
 
-        if (hexKey) {
+        // Check if the API returned plain content directly (no ciphertext)
+        if (note.content && !note.ciphertext) {
+          content = note.content;
+          title = 'shared_paste';
+          language = 'text';
+        } else if (hexKey) {
           try {
             const cryptoKey = await importKey(hexKey);
             content = await decryptData(note.ciphertext, note.iv, cryptoKey);

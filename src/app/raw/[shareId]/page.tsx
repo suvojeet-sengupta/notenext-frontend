@@ -55,7 +55,11 @@ export default function RawPastePage(props: RawPageProps) {
 
         // 3. Decrypt or Decode
         let contentStr = '';
-        if (hexKey) {
+
+        // Check if the API returned plain content directly (no ciphertext)
+        if (note.content && !note.ciphertext) {
+          contentStr = note.content;
+        } else if (hexKey) {
           try {
             const cryptoKey = await importKey(hexKey);
             contentStr = await decryptData(note.ciphertext, note.iv, cryptoKey);
